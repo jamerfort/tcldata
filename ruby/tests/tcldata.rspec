@@ -1,0 +1,172 @@
+#!/usr/bin/env ruby
+
+require './tcldata.rb'
+
+require 'stringio'
+
+describe TclDataReader, ".peek" do
+	it "reads the next character without changing the offset" do
+		s = "This is a test"
+		f = StringIO.new s
+		
+		5.times { f.readchar }
+
+		offset = f.tell
+
+		TclDataReader.peek(f).should eq("i")
+		f.tell.should eq(offset)
+
+		TclDataReader.peek(f, 4).should eq("is a")
+		f.tell.should eq(offset)
+	end
+end
+
+describe TclDataReader, ".read_whitespace" do
+	it "reads all of the whitespace" do
+		whitespace = " \t\t  \n  \t"
+		message = "hello world"
+		f = StringIO.new (whitespace + message)
+
+		TclDataReader.read_whitespace(f).should eq(whitespace)
+		
+		f.read.should eq(message)
+	end
+end
+
+describe TclDataReader, ".read_space_and_tabs" do
+	it "reads all of the space and tabs" do
+		whitespace = " \t\t    \t"
+		message = "hello world"
+		f = StringIO.new (whitespace + message)
+
+		TclDataReader.read_space_and_tabs(f).should eq(whitespace)
+		
+		f.read.should eq(message)
+	end
+end
+
+describe TclDataReader, ".read_escape" do
+	escapes = {
+		# TCL => RUBY
+		"x" => "x",
+		"d" => "d",
+		"." => ".",
+
+		"a" => 0x7.chr ,
+		"b" => 0x8.chr ,
+		"f" => 0xc.chr ,
+		"n" => 0xa.chr ,
+		"r" => 0xd.chr ,
+		"t" => 0x9.chr ,
+		"v" => 0xb.chr ,
+
+		 "\n  \t\t " => " ",
+
+		"7" => "\7",
+		"77" => "\77",
+		"377" => "\377",
+
+		"xa" => "\xa".chr,
+		"xaa" => "\xaa".chr,
+		"xaabbccddeeff" => "\xff",
+
+		"ua" => "\u{a}",
+		"uaa" => "\u{aa}",
+		"uaabbccddeeff" => "\u{aabb}",
+	}
+
+	escapes.each do |key,value|
+		it "handles backslash substitution of (#{key.inspect})" do
+			f = StringIO.new key
+			TclDataReader.read_escape(f).should eq(value)
+		end
+	end
+
+	it "reads all the whitespace after escaped newlines" do
+		f = StringIO.new %(\n   \t\t  Goodbye)
+		TclDataReader.read_escape(f).should eq(" ")
+		f.read.should eq("Goodbye")
+	end
+end
+
+describe TclDataReader, ".read_braces" do
+	it "reads up to the closing brace" do
+		f = StringIO.new %(This is a brace} test.)
+		TclDataReader.read_braces(f).should eq(%(This is a brace))
+	end
+
+	it "handles nested braces" do
+		f = StringIO.new %(This is {a nested} brace} test.)
+		TclDataReader.read_braces(f).should eq(%(This is {a nested} brace))
+	end
+
+	it "handles escaped braces" do
+		f = StringIO.new %(This is {a nested\\} brace} test.} Did it work?)
+		TclDataReader.read_braces(f).should eq(%(This is {a nested\\} brace} test.))
+	end
+end
+
+describe TclDataReader, ".read_quotes" do
+	it "reads up to the closing quotes" do
+		f = StringIO.new %(This is a quote" test.)
+		TclDataReader.read_quotes(f).should eq(%(This is a quote))
+	end
+
+	it "reads nested quotes" do
+		f = StringIO.new %(This is a \\"nested\\" quote" test.)
+		TclDataReader.read_quotes(f).should eq(%(This is a "nested" quote))
+	end
+
+	it "handles escaped characters" do
+		f = StringIO.new %(This is a\\tquote" test.)
+		TclDataReader.read_quotes(f).should eq(%(This is a\tquote))
+	end
+end
+
+describe TclDataReader, ".read_word" do
+	def test_words(string, word_list)
+		f = StringIO.new string
+
+		word = TclDataReader.read_word(f)
+
+		while !word.nil? do
+			word.should eq(word_list.shift)
+			word = TclDataReader.read_word(f)
+		end
+
+		word_list.length.should eq(0)
+		
+	end
+
+	it "reads words" do
+		s = %(This is a word test.)
+		l = ["This", "is", "a", "word", "test."]
+		test_words(s, l)
+	end
+
+	it "reads quoted words" do
+		s = %(This "is a" word test.)
+		l = ["This", "is a", "word", "test."]
+		test_words(s, l)
+	end
+
+	it "reads braced words" do
+		s = %(This {is a} word test.)
+		l = ["This", "is a", "word", "test."]
+		test_words(s, l)
+	end
+
+	it "reads quoted words with escapes" do
+		s = %(This {is a\\} word} test.)
+		l = ["This", "is a\\} word", "test."]
+		test_words(s, l)
+
+		s = %(This \\{is a\\} word test.)
+		l = ["This", "{is", "a}", "word", "test."]
+		test_words(s, l)
+
+		s = %(This \\"is a\\" word test.)
+		l = ["This", "\"is", "a\"", "word", "test."]
+		test_words(s, l)
+	end
+end
