@@ -170,3 +170,35 @@ describe TclDataReader, ".read_word" do
 		test_words(s, l)
 	end
 end
+
+describe TclDataReader, ".read_to_next_word" do
+	it "should read to the next word when the position is on a word" do
+		s = %(This is {a reading} test)
+		f = StringIO.new s
+		
+		TclDataReader.read_to_next_word f
+		TclDataReader.read_word(f).should eq("is")
+
+		f.seek 0
+		TclDataReader.read_to_next_word f
+		TclDataReader.read_to_next_word f
+		TclDataReader.read_word(f).should eq("a reading")
+
+	end	
+end
+
+describe TclDataReader, ".move_to_word" do
+	it "should move the file position to the desired word" do
+		s = %(This is {a reading} test)
+		f = StringIO.new s
+		
+		TclDataReader.move_to_word(f, 2)
+		TclDataReader.read_word(f).should eq("a reading")
+
+		f.seek 0
+		TclDataReader.move_to_word(f, 3)
+		TclDataReader.read_word(f).should eq("test")
+
+
+	end	
+end

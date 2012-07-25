@@ -92,6 +92,22 @@
 #        braces, except for backslash-newline as described above.
 
 module TclDataReader
+	def self.move_to_word(f, num_of_words=1)
+		num_of_words.times {read_to_next_word f}
+	end
+	
+	def self.read_to_next_word(f)
+		c = peek(f)
+
+		if /\s/ =~ c
+			read_whitespace f
+		else
+			read_word f
+			read_whitespace f
+		end
+		
+	end
+
 	def self.read_word(f)
 		value = nil 
 
