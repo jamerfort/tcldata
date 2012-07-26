@@ -91,45 +91,49 @@
 #        Backslash substitution is not performed on words enclosed in
 #        braces, except for backslash-newline as described above.
 
+
+# FIXME: Add use of IO objects to the methods below.  This means we can pass an
+# 	 object that doesn't really print for scanning
+
 module TclDataReader
-	def self.move_to_word(f, num_of_words=1)
-		num_of_words.times {read_to_next_word f}
+	def self.move_to_word(reader, num_of_words=1)
+		num_of_words.times {read_to_next_word reader}
 	end
 	
-	def self.read_to_next_word(f)
-		c = peek(f)
+	def self.read_to_next_word(reader)
+		c = peek(reader)
 
 		if /\s/ =~ c
-			read_whitespace f
+			read_whitespace reader
 		else
-			read_word f
-			read_whitespace f
+			read_word reader
+			read_whitespace reader
 		end
 		
 	end
 
-	def self.read_word(f)
+	def self.read_word(reader)
 		value = nil 
 
 		# read and discard leading whitespace
-		read_whitespace f
+		read_whitespace reader
 
 		begin
-			c = f.readchar
+			c = reader.readchar
 		rescue EOFError
 			return nil
 		end
 
 		if c == "\""
-			return read_quotes(f)
+			return read_quotes(reader)
 		elsif c == "{"
-			return read_braces(f)
+			return read_braces(reader)
 		else
 			# read to the first, unescaped whitespace
 			begin
 				while /\s/ !~ c do
 					if c == "\\"
-						c = read_escape f
+						c = read_escape reader
 					end
 
 					if value.nil?
@@ -137,7 +141,7 @@ module TclDataReader
 					end
 
 					value << c
-					c = f.readchar
+					c = reader.readchar
 				end
 			rescue EOFError
 				return value
@@ -147,39 +151,39 @@ module TclDataReader
 		return value
 	end
 
-	def self.read_quotes(f)
+	def self.read_quotes(reader)
 		value = ""
 		
-		c = f.readchar
+		c = reader.readchar
 
 		while c != "\"" do
 			if c == "\\"
-				c = read_escape f
+				c = read_escape reader
 			end
 
 			value << c
-			c = f.readchar
+			c = reader.readchar
 		end
 	
 		return value
 	end
 
-	def self.read_braces(f)
+	def self.read_braces(reader)
 		value = ""
 
 		brace_count = 1
 
 		while brace_count > 0 do
-			c = f.readchar
+			c = reader.readchar
 
 			if c == "\\"
-				next_char = peek(f)
+				next_char = peek(reader)
 
 				if next_char == "\n"
-					c = read_escape f
+					c = read_escape reader
 				else
 					value << (c + next_char)
-					f.readchar
+					reader.readchar
 				end
 			elsif c == "{"
 				brace_count += 1
@@ -197,25 +201,25 @@ module TclDataReader
 		return value
 	end
 	
-	def self.peek(f, num_chars=1)
-		offset = f.tell
+	def self.peek(reader, num_chars=1)
+		offset = reader.tell
 
-		result = f.read num_chars
+		result = reader.read num_chars
 
-		f.seek offset
+		reader.seek offset
 
 		return result
 	end
 
-	def self.read_whitespace(f)
+	def self.read_whitespace(reader)
 		value = ""
 
 		begin
-			next_char = peek(f)
+			next_char = peek(reader)
 
 			while /\s/ =~ next_char do
-				value << f.readchar
-				next_char = peek(f)
+				value << reader.readchar
+				next_char = peek(reader)
 			end
 
 			return value
@@ -224,15 +228,15 @@ module TclDataReader
 		end
 	end
 
-	def self.read_space_and_tabs(f)
+	def self.read_space_and_tabs(reader)
 		value = ""
 
 		begin
-			next_char = peek(f)
+			next_char = peek(reader)
 
 			while next_char == " " || next_char == "\t"
-				value << f.readchar
-				next_char = peek(f)
+				value << reader.readchar
+				next_char = peek(reader)
 			end
 
 			return value
@@ -241,21 +245,21 @@ module TclDataReader
 		end
 	end
 
-	def self.read_octals(f)
+	def self.read_octals(reader)
 		result = ""
 		begin
 			# read at most 2 octal characters
-			c1 = peek f
-			c2 = peek f
+			c1 = peek reader
+			c2 = peek reader
 
 			if /[0-7]/ =~ c1
 				# actually read the character
-				f.readchar
+				reader.readchar
 				result << c1
 
 				if /[0-7]/ =~ c2
 					# actually read the other character
-					f.readchar
+					reader.readchar
 
 					result << c2
 				end
@@ -267,22 +271,22 @@ module TclDataReader
 		return result 
 	end
 
-	def self.read_hex(f)
+	def self.read_hex(reader)
 		c1, c2 = nil, nil
 
 		begin
-			offset = f.tell
-			nextchar = f.readchar
+			offset = reader.tell
+			nextchar = reader.readchar
 			
 			while /[0-9a-fA-F]/ =~ nextchar do
 				c1, c2 = c2, nextchar
 
-				offset = f.tell
-				nextchar = f.readchar
+				offset = reader.tell
+				nextchar = reader.readchar
 			end
 
 			# put the next char back
-			f.seek offset
+			reader.seek offset
 			
 		rescue EOFError
 			if c2.nil?
@@ -304,19 +308,19 @@ module TclDataReader
 		end
 	end
 
-	def self.read_unicode(f)
+	def self.read_unicode(reader)
 		result = ""
 		max = 4
 
 		begin
-			offset = f.tell
-			c = f.readchar
+			offset = reader.tell
+			c = reader.readchar
 
 			while max > 0 && /[0-9a-zA-Z]/ =~ c do
 				result << c
 
-				offset = f.tell
-				c = f.readchar
+				offset = reader.tell
+				c = reader.readchar
 
 				max -= 1
 			end
@@ -327,8 +331,8 @@ module TclDataReader
 		return result
 	end
 
-	def self.read_escape(f)
-		next_char = f.readchar
+	def self.read_escape(reader)
+		next_char = reader.readchar
 
 		case next_char
 			when "a"; return 0x7.chr
@@ -340,13 +344,13 @@ module TclDataReader
 			when "v"; return 0xb.chr
 
 			when "\n"
-				whitespace = read_space_and_tabs f
+				whitespace = read_space_and_tabs reader
 				return " "
 
 			when "\\"; return "\\"
 
 			when /[0-7]/
-				octals = read_octals f
+				octals = read_octals reader
 				full_octal = "#{next_char}#{octals}"
 				
 				# convert to octal
@@ -356,7 +360,7 @@ module TclDataReader
 				return octal.chr
 
 			when "x"
-				hexes = read_hex f
+				hexes = read_hex reader
 				
 				# is this an escaped "x" or a hex char?
 				if hexes.nil?
@@ -370,7 +374,7 @@ module TclDataReader
 				end
 
 			when "u"
-				unicodes = read_unicode f
+				unicodes = read_unicode reader
 				
 				# is this an escaped "u" or a hex char?
 				if unicodes.nil?
